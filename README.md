@@ -1,2 +1,2 @@
-# space-invaders-arcade
+# SpaInEm
 Emulator for Space Invaders Arcade
