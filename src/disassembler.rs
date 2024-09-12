@@ -12,6 +12,7 @@ macro_rules! b2s {
 pub fn disassemble_8080_op(buffer: &Vec<u8>, pc: usize) -> u16 {
     let code = buffer[pc];
     let mut op_bytes: u16 = 1;
+    print!("{:#04x}:    ", pc);
 
     match code {
         0x00 => {
