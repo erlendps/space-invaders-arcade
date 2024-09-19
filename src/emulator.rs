@@ -49,22 +49,23 @@ impl Emulator8080 {
     /// Decides if the operation results in a auxiliary carry.
     ///
     /// TODO: implement
-    pub fn aux_carry(_: u16) -> bool {
+    pub fn aux_carry(_: u8) -> bool {
         false
     }
 
     /// Determines whether the value (which is a result of a arithmetic operation)
-    /// has carried in the most significant bit (bit7).
-    ///
-    /// TODO: implement for borrow
+    /// has carried/borrowed into/from bit 8.
     ///
     /// Example:
     /// ```rust
     /// use emulator::Emulator8080
     /// Emulator8080::carry(0x14f) // returns true
     /// ```
-    pub fn carry(value: u16) -> bool {
-        value > 0xff
+    pub fn carry(value: u8, compare_to: u8, subtraction: bool) -> bool {
+        if subtraction {
+            return value > compare_to;
+        }
+        value < compare_to
     }
     /// The parity method performs a parity check of the value.
     ///
@@ -102,7 +103,8 @@ impl Emulator8080 {
     fn set_flags(
         &mut self,
         result: u8,
-        result_u16: u16,
+        compare_to: u8,
+        subtraction: bool,
         set_ac: bool,
         set_cy: bool,
         set_p: bool,
@@ -111,10 +113,10 @@ impl Emulator8080 {
     ) {
         // carries, requires u16
         if set_ac {
-            self.flags.ac = Emulator8080::aux_carry(result_u16);
+            self.flags.ac = Emulator8080::aux_carry(result);
         }
         if set_cy {
-            self.flags.cy = Emulator8080::carry(result_u16);
+            self.flags.cy = Emulator8080::carry(result, compare_to, subtraction);
         }
         // requires u8
         if set_p {
@@ -134,6 +136,11 @@ impl Emulator8080 {
     }
 
     /* Arithmetic group */
+    fn add(&mut self, lhs: u8, rhs: u8, with_carry: bool) -> u8 {
+        lhs.wrapping_add(rhs)
+            .wrapping_add(if with_carry { self.flags.cy as u8 } else { 0 })
+    }
+
     /// Adds the content of `value` to the accumulator register (`ra`).
     ///
     /// The method is a general method, in that it can add registers,
@@ -141,14 +148,10 @@ impl Emulator8080 {
     ///
     /// The function also sets flags affected. This method affects
     /// Z, S, P, CY and AC.
-    pub fn add(&mut self, value: u8, with_carry: bool) {
-        // cast to u16 for easier carry
-        let result_u16 =
-            self.ra as u16 + value as u16 + (if with_carry { self.flags.cy as u16 } else { 0 });
+    pub fn add_a(&mut self, value: u8, with_carry: bool) {
+        let result = self.add(self.ra, value, with_carry);
 
-        let result = (result_u16 & 0xff) as u8;
-
-        self.set_flags(result, result_u16, true, true, true, true, true);
+        self.set_flags(result, self.ra, false, true, true, true, true, true);
         self.ra = result;
     }
 
@@ -157,7 +160,7 @@ impl Emulator8080 {
     /// The method affects Z, S, P, CY and AC
     pub fn add_mem(&mut self, with_carry: bool) {
         let address = self.get_address() as usize;
-        self.add(self.memory[address], with_carry);
+        self.add_a(self.memory[address], with_carry);
     }
     /* Branch group */
     /* Data transfer group */
