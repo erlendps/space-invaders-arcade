@@ -1,3 +1,9 @@
+pub enum RegPair {
+    BC,
+    DE,
+    HL,
+    SP,
+}
 /// Struct containing the state for the 8080 condition flags.
 #[derive(Debug)]
 pub struct Flags8080 {
@@ -8,42 +14,70 @@ pub struct Flags8080 {
     cy: bool,
 }
 
+impl Flags8080 {
+    pub fn new() -> Self {
+        Self {
+            z: false,
+            s: false,
+            p: false,
+            ac: false,
+            cy: false,
+        }
+    }
+}
+
 /// Struct containing state for the 8080 processor.
 #[derive(Debug)]
 pub struct Emulator8080 {
     // Special registers
     /// Program Counter
-    pc: u16,
+    pub pc: u16,
     /// Stack pointer
-    sp: u16,
+    pub sp: u16,
 
     // general purpose registers
     /// Register A
-    ra: u8,
+    pub ra: u8,
     /// Register B
-    rb: u8,
+    pub rb: u8,
     /// Register C
-    rc: u8,
+    pub rc: u8,
     /// Register D
-    rd: u8,
+    pub rd: u8,
     /// Register E
-    re: u8,
+    pub re: u8,
     /// Register H
-    rh: u8,
+    pub rh: u8,
     /// Register L
-    rl: u8,
+    pub rl: u8,
 
     // condition flags
-    flags: Flags8080,
+    pub flags: Flags8080,
 
     // memory
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
 
     // enable
     enable: bool,
 }
 
 impl Emulator8080 {
+    pub fn empty() -> Self {
+        Self {
+            pc: 0,
+            sp: 0,
+            ra: 0,
+            rb: 0,
+            rc: 0,
+            rd: 0,
+            re: 0,
+            rl: 0,
+            rh: 0,
+            flags: Flags8080::new(),
+            memory: vec![0; u16::MAX as usize],
+            enable: true,
+        }
+    }
     /* Helper functions */
 
     /// Decides if the operation results in a auxiliary carry.
@@ -186,12 +220,96 @@ impl Emulator8080 {
         self.ra = result;
     }
 
-    pub fn sub_mem(&mut self, value: u8, with_borrow: bool) {
+    pub fn sub_mem(&mut self, with_borrow: bool) {
         let address = self.get_address() as usize;
-        self.sub_a(value, with_borrow);
+        self.sub_a(self.memory[address], with_borrow);
+    }
+
+    /// Increment the value of `reg`.
+    ///
+    /// This method affects Z, S, P and AC.
+    pub fn inc_reg(&mut self, reg: u8) {
+        let result = self.add(reg, 1, false);
+
+        self.set_flags(result, reg, false, true, false, true, true, true);
+    }
+
+    /// Increment the value pointed to by RH and RL.
+    ///
+    /// This method affects Z, S, P and AC.
+    pub fn inc_mem(&mut self) {
+        let address = self.get_address() as usize;
+        let value = self.memory[address];
+        let result = self.add(value, 1, false);
+
+        self.set_flags(result, value, false, true, false, true, true, true);
+        self.memory[address] = result;
+    }
+
+    /// Decrement the value of `reg`.
+    ///
+    /// This method affects Z, S, P and AC.
+    pub fn dec_reg(&mut self, reg: u8) {
+        let result = self.sub(reg, 1, false);
+
+        self.set_flags(result, reg, true, true, false, true, true, true);
+    }
+
+    /// Decrement the value pointed to by RH and RL.
+    ///
+    /// This method affects Z, S, P and AC.
+    pub fn dec_mem(&mut self) {
+        let address = self.get_address() as usize;
+        let value = self.memory[address];
+        let result = self.sub(value, 1, false);
+
+        self.set_flags(result, value, true, true, false, true, true, true);
+        self.memory[address] = result;
+    }
+
+    /// Increments or decrements the value of (rh rl).
+    fn get_inc_or_dec_reg_pair(rh: u8, rl: u8, increment: bool) -> (u8, u8) {
+        let value = (rh as u16) << 8 + rl as u16;
+        if increment {
+            let result = value.wrapping_add(1);
+            return ((result >> 8) as u8, (result & 0xff) as u8);
+        } else {
+            let result = value.wrapping_sub(1);
+            return ((result >> 8) as u8, (result & 0xff) as u8);
+        }
+    }
+
+    /// Increments or decrements are register pair specified by `reg_pair`.
+    pub fn inc_or_dec_reg_pair(&mut self, reg_pair: RegPair, increment: bool) {
+        match reg_pair {
+            RegPair::BC => {
+                let result = Emulator8080::get_inc_or_dec_reg_pair(self.rb, self.rc, increment);
+                self.rb = result.0;
+                self.rc = result.1;
+            }
+            RegPair::DE => {
+                let result = Emulator8080::get_inc_or_dec_reg_pair(self.rd, self.re, increment);
+                self.rd = result.0;
+                self.re = result.1;
+            }
+            RegPair::HL => {
+                let result = Emulator8080::get_inc_or_dec_reg_pair(self.rh, self.rl, increment);
+                self.rh = result.0;
+                self.rl = result.1;
+            }
+            RegPair::SP => {
+                if increment {
+                    self.sp = self.sp.wrapping_add(1);
+                } else {
+                    self.sp = self.sp.wrapping_sub(1);
+                }
+            }
+        }
     }
     /* Branch group */
     /* Data transfer group */
     /* Logical group */
     /* Stack, I/O and machine control group */
+
+    pub fn emulate_instruction(&mut self) {}
 }
