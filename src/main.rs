@@ -1,6 +1,8 @@
 use std::env;
 
 mod disassembler;
+mod emulator;
+mod instructions;
 mod io_spainem;
 
 fn main() {
