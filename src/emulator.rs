@@ -136,6 +136,10 @@ impl Emulator8080 {
     }
 
     /* Arithmetic group */
+    /// Adds rhs to lhs.
+    ///
+    /// If `with_carry` is set, it also adds the content of the
+    /// cy flag.
     fn add(&mut self, lhs: u8, rhs: u8, with_carry: bool) -> u8 {
         lhs.wrapping_add(rhs)
             .wrapping_add(if with_carry { self.flags.cy as u8 } else { 0 })
@@ -161,6 +165,30 @@ impl Emulator8080 {
     pub fn add_mem(&mut self, with_carry: bool) {
         let address = self.get_address() as usize;
         self.add_a(self.memory[address], with_carry);
+    }
+
+    /// Subtracts rhs from lhs.
+    ///
+    /// If with_borrow is specified, it also subtracts the content
+    /// of the cy flag.
+    fn sub(&mut self, lhs: u8, rhs: u8, with_borrow: bool) -> u8 {
+        lhs.wrapping_sub(rhs)
+            .wrapping_sub(if with_borrow { self.flags.cy as u8 } else { 0 })
+    }
+
+    /// Subtracts value from register a.
+    ///
+    /// This method affects the flags Z, S, P, CY and AC.
+    pub fn sub_a(&mut self, value: u8, with_borrow: bool) {
+        let result = self.sub(self.ra, value, with_borrow);
+
+        self.set_flags(result, self.ra, true, true, true, true, true, true);
+        self.ra = result;
+    }
+
+    pub fn sub_mem(&mut self, value: u8, with_borrow: bool) {
+        let address = self.get_address() as usize;
+        self.sub_a(value, with_borrow);
     }
     /* Branch group */
     /* Data transfer group */
