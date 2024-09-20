@@ -169,6 +169,38 @@ impl Emulator8080 {
         ((self.rh as u16) << 8) | (self.rl as u16)
     }
 
+    /// fetches the content of the given `reg_pair`
+    fn get_reg_pair(&self, reg_pair: RegPair) -> u16 {
+        match reg_pair {
+            RegPair::BC => ((self.rb as u16) << 8) | (self.rc as u16),
+            RegPair::DE => ((self.rd as u16) << 8) | (self.re as u16),
+            RegPair::HL => ((self.rh as u16) << 8) | (self.rl as u16),
+            RegPair::SP => self.sp,
+        }
+    }
+
+    /// Sets `reg_pair` to `value`
+    fn set_reg_pair(&mut self, value: u16, reg_pair: RegPair) {
+        let value_tuple = ((value >> 8) as u8, (value & 0xff) as u8);
+        match reg_pair {
+            RegPair::BC => {
+                self.rb = value_tuple.0;
+                self.rc = value_tuple.1;
+            }
+            RegPair::DE => {
+                self.rd = value_tuple.0;
+                self.re = value_tuple.1;
+            }
+            RegPair::HL => {
+                self.rh = value_tuple.0;
+                self.rl = value_tuple.1;
+            }
+            RegPair::SP => {
+                self.sp = value;
+            }
+        }
+    }
+
     /* Arithmetic group */
     /// Adds rhs to lhs.
     ///
@@ -220,6 +252,7 @@ impl Emulator8080 {
         self.ra = result;
     }
 
+    /// Subtracts the content pointed to by (HL) from the accumulator.
     pub fn sub_mem(&mut self, with_borrow: bool) {
         let address = self.get_address() as usize;
         self.sub_a(self.memory[address], with_borrow);
@@ -268,14 +301,12 @@ impl Emulator8080 {
     }
 
     /// Increments or decrements the value of (rh rl).
-    fn get_inc_or_dec_reg_pair(rh: u8, rl: u8, increment: bool) -> (u8, u8) {
+    fn get_inc_or_dec_reg_pair(rh: u8, rl: u8, increment: bool) -> u16 {
         let value = (rh as u16) << 8 + rl as u16;
         if increment {
-            let result = value.wrapping_add(1);
-            return ((result >> 8) as u8, (result & 0xff) as u8);
+            value.wrapping_add(1)
         } else {
-            let result = value.wrapping_sub(1);
-            return ((result >> 8) as u8, (result & 0xff) as u8);
+            value.wrapping_sub(1)
         }
     }
 
@@ -284,18 +315,15 @@ impl Emulator8080 {
         match reg_pair {
             RegPair::BC => {
                 let result = Emulator8080::get_inc_or_dec_reg_pair(self.rb, self.rc, increment);
-                self.rb = result.0;
-                self.rc = result.1;
+                self.set_reg_pair(result, RegPair::BC);
             }
             RegPair::DE => {
                 let result = Emulator8080::get_inc_or_dec_reg_pair(self.rd, self.re, increment);
-                self.rd = result.0;
-                self.re = result.1;
+                self.set_reg_pair(result, RegPair::DE);
             }
             RegPair::HL => {
                 let result = Emulator8080::get_inc_or_dec_reg_pair(self.rh, self.rl, increment);
-                self.rh = result.0;
-                self.rl = result.1;
+                self.set_reg_pair(result, RegPair::HL);
             }
             RegPair::SP => {
                 if increment {
@@ -305,6 +333,46 @@ impl Emulator8080 {
                 }
             }
         }
+    }
+
+    /// Adds the content of `reg_pair` into the content of (HL)
+    pub fn dad(&mut self, reg_pair: RegPair) {
+        let a = self.get_reg_pair(RegPair::HL);
+        let b = self.get_reg_pair(reg_pair);
+        let result = a.wrapping_add(b);
+
+        if result < a {
+            self.flags.cy = true;
+        } else {
+            self.flags.cy = false
+        }
+
+        self.set_reg_pair(result, RegPair::HL);
+    }
+
+    /// The eight-bit number in the accumulator is adjusted
+    /// to form two four-bit Binary-Coded-Decimal by the following process:
+    ///
+    /// 1. If the value of the least significant 4 bits of the
+    /// accumulator is greater than 9 or if the AC flag
+    /// is set, 6 is added to the accumulator.
+    /// 2. If the value of the most significant 4 bits of the
+    /// accumulator is now greater than 9, or if the CY
+    /// flag is set, 6 is added to the most significant 4
+    /// bits of the accumulator.
+    pub fn daa(&mut self) {
+        // least significant 4 bits
+        let ls4b = self.ra & 0x0f;
+        if ls4b > 0x9 || self.flags.ac {
+            self.ra = self.add(self.ra, 0x6, false);
+        }
+        // most significant 4 bits
+        let mut ms4b = (self.ra & 0xf0) >> 4;
+        if ms4b > 0x9 || self.flags.cy {
+            ms4b = ms4b.wrapping_add(0x6) << 4;
+        }
+        let result = (self.ra & 0xf) | ms4b;
+        self.set_flags(result, self.ra, false, true, true, true, true, true);
     }
     /* Branch group */
     /* Data transfer group */
